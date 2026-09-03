@@ -35,6 +35,9 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
 /* top bar */
 .top{display:flex;align-items:center;gap:8px;padding:10px 12px 8px;border-bottom:1px solid var(--line);background:var(--panel)}
+.top .chip{flex:0 1 auto;min-width:0}
+.top .chip>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.top .play{flex:none}
 .top .name{font-weight:700;letter-spacing:.02em;margin-right:auto;font-size:15px}
 @media (max-width:430px){.top .name{display:none}.top{justify-content:space-between}}
 .chip{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:18px;border:1px solid var(--line);background:var(--bg);font-weight:500;white-space:nowrap}
@@ -359,7 +362,7 @@ const stepW = 30, rowH = 26;
 
 function renderTop(){
   if(cur) $('songName').textContent = cur.name;
-  { const k=keyAt(curBar()); $('keyTxt').textContent = keyName(k) + (S.keys.length>1 ? ` ·${k.bar+1}〜` : ''); }
+  { const k=keyAt(curBar()); $('keyTxt').textContent = keyName(k); }
   $('bpmTxt').textContent = S.bpm + (S.swing.mode==='straight' ? '' : S.swing.mode==='half' ? '≈' : '〜');
   $('metChip').classList.toggle('on', S.met);
 }
@@ -665,6 +668,7 @@ function follow(){
   const s = r0 + ((lastStep.s - r0 + (a.currentTime-lastStep.t)/spb) % (r1-r0));
   const x = 44 + s*stepW; $('playhead').style.left = x+'px';
   const bar=Math.floor(s/STEPS); document.querySelectorAll('.bar[data-i]').forEach(b=>b.classList.toggle('now', +b.dataset.i===bar));
+  { const cs=$('chords'); const cb=cs.querySelector(`.bar[data-i="${bar}"]`); if(cb){ const l=cb.offsetLeft, r=l+cb.offsetWidth; if(l<cs.scrollLeft+8 || r>cs.scrollLeft+cs.clientWidth-8) cs.scrollLeft=Math.max(0, l-cs.clientWidth/3); } }
   document.querySelectorAll('.rb').forEach((b,i)=>b.classList.toggle('now', i===bar));
   const w=$('rollwrap'); if(x < w.scrollLeft+44 || x > w.scrollLeft+w.clientWidth-20) w.scrollLeft = Math.max(0, x-100);
   requestAnimationFrame(follow);
