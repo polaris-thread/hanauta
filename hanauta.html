@@ -47,6 +47,7 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .chords::-webkit-scrollbar{display:none}
 .bar{flex:none;width:76px;height:52px;border-radius:10px;border:1px dashed var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
 .bar .n{font-size:10px;color:var(--ink2);letter-spacing:.08em}
+.bar .k{font-size:9px;color:var(--acc);font-weight:700;letter-spacing:.02em;line-height:1;margin-top:-2px}
 .bar .c{font-weight:700;font-size:17px}
 .bar.set{border-style:solid;background:var(--cell-in);border-color:transparent}
 .bar.now{outline:2px solid var(--play);outline-offset:-2px}
@@ -228,6 +229,9 @@ function normalize(S){
   S.tracks.forEach(t => t.notes = t.notes.filter(n => n.m>=LOW && n.m<=HIGH));
   if(S.octC3===undefined) S.octC3=true;   // 初期値は Cubase 表記
   if(typeof S.lyrics!=='string') S.lyrics='';
+  // キーの段：bar（その小節から）・root・mode。ひとつ目は必ず1小節目
+  if(!Array.isArray(S.keys) || !S.keys.length) S.keys=[{bar:0, root:S.root, mode:S.mode}];
+  S.keys.sort((a,b)=>a.bar-b.bar); S.keys[0].bar=0; S.root=S.keys[0].root; S.mode=S.keys[0].mode;
   // リズムのモード：straight（ふつう）/ shuffle（8分の三連揺れ）/ half（16分の三連揺れ＝ハーフタイムシャッフル）
   if(!S.swing || !S.swing.mode) S.swing={mode: (S.swing&&S.swing.amt) ? (S.swing.type==='16'?'half':'shuffle') : 'straight'};
   return S;
@@ -282,8 +286,17 @@ function chordNotes(ch){ if(!ch) return []; const base = 48 + ch.root; const n =
 function playChord(ch, t, dur){ chordNotes(ch).forEach(m=>tone(m, t, dur, 'chord')); }
 
 // ---------- scale helpers ----------
-const inScale = m => SCALES[S.mode].includes(((m - S.root)%12+12)%12);
-const isRoot = m => ((m - S.root)%12+12)%12===0;
+function keyAt(bar){ let k=S.keys[0]; for(const x of S.keys){ if(x.bar<=bar) k=x; else break; } return k; }
+const curBar = () => Math.floor(cursor/STEPS);
+const inScale = (m,k) => { k=k||keyAt(curBar()); return SCALES[k.mode].includes(((m - k.root)%12+12)%12); };
+const isRoot = (m,k) => { k=k||keyAt(curBar()); return ((m - k.root)%12+12)%12===0; };
+const keyName = k => NOTE_NAMES[k.root] + ' ' + (k.mode==='major'?'major':'minor');
+function setKey(bar, root, mode){
+  const seg=S.keys.find(k=>k.bar===bar);
+  if(seg){ seg.root=root; seg.mode=mode; } else S.keys.push({bar, root, mode});
+  S.keys.sort((a,b)=>a.bar-b.bar); S.root=S.keys[0].root; S.mode=S.keys[0].mode;
+}
+function removeKey(bar){ if(bar===0) return; S.keys=S.keys.filter(k=>k.bar!==bar); }
 // 揺れ：16分ステップ s の遅れ（16分一個ぶんを1とした比率）。100で三連の位置
 const RHYTHM = { straight:'ふつう', shuffle:'シャッフル', half:'ハーフタイムシャッフル' };
 function swingOff(s){ const m=S.swing.mode; if(m==='straight') return 0;
@@ -316,12 +329,12 @@ const PROGS = [
   { em:'🕯️', name:'マイナー循環', feel:'しっとり', mode:'minor', bars:[[0,'min'],[5,'min'],[7,'7'],[0,'min']] },
   { em:'🌊', name:'マイナー王道', feel:'切ない', mode:'minor', bars:[[0,'min'],[8,'maj'],[10,'maj'],[0,'min']] },
 ];
-function progTonic(pg){ if(pg.mode===S.mode) return S.root; return (S.root + (S.mode==='major' ? 9 : 3)) % 12; }
+function progTonic(pg,k){ if(pg.mode===k.mode) return k.root; return (k.root + (k.mode==='major' ? 9 : 3)) % 12; }
 function progChord(t, c){ const ch={root:(t+c[0])%12, q:c[1]}; if(c[2]!==undefined) ch.bass=(t+c[2])%12; return ch; }
-function progBars(pg){ const t=progTonic(pg); return pg.bars.map(b => Array.isArray(b[0]) ? {a:progChord(t,b[0]), b:progChord(t,b[1]), split:true} : {a:progChord(t,b), b:null, split:false}); }
-function progLabel(pg){ return progBars(pg).map(barLabel).join('  '); }
+function progBars(pg,k){ const t=progTonic(pg,k); return pg.bars.map(b => Array.isArray(b[0]) ? {a:progChord(t,b[0]), b:progChord(t,b[1]), split:true} : {a:progChord(t,b), b:null, split:false}); }
+function progLabel(pg,k){ return progBars(pg,k).map(barLabel).join('  '); }
 function placeProg(pg, start){
-  start = start||0; const bars=progBars(pg);
+  start = start||0; const bars=progBars(pg, keyAt(start));
   while(S.bars<start+bars.length){ S.bars++; S.chords.push(null); }
   bars.forEach((bc,i)=>{ S.chords[start+i]=bc; });
   save(); renderChords(); renderGrid(); closeSheet();
@@ -329,12 +342,12 @@ function placeProg(pg, start){
   toast(`${pg.name}を${start+1}小節目から置いた。▶で鳴らして`);
 }
 function openProgSheet(start){
-  start = start||0;
-  let h=`<h3>進行の札</h3><p class="txt" style="margin:0 0 10px">${NOTE_NAMES[S.root]} ${S.mode==='major'?'major':'minor'} に合わせて、${start+1}小節目から置く（そこから先のコードは上書き・足りん小節は足す）。</p>`;
-  const mine=PROGS.filter(p=>p.mode===S.mode), other=PROGS.filter(p=>p.mode!==S.mode);
-  const list=arr=>{ let o=`<div class="row prog-list">`; arr.forEach((pg,k)=>{ o+=`<button class="pick ghost" data-p="${PROGS.indexOf(pg)}"><span class="em">${pg.em}</span><span class="nm">${pg.name}<span class="feel">${pg.feel}</span><span class="sub mono">${progLabel(pg)}</span></span></button>`; }); return o+`</div>`; };
+  start = start||0; const K=keyAt(start);
+  let h=`<h3>進行の札</h3><p class="txt" style="margin:0 0 10px">${keyName(K)} に合わせて、${start+1}小節目から置く（そこから先のコードは上書き・足りん小節は足す）。</p>`;
+  const mine=PROGS.filter(p=>p.mode===K.mode), other=PROGS.filter(p=>p.mode!==K.mode);
+  const list=arr=>{ let o=`<div class="row prog-list">`; arr.forEach((pg,k)=>{ o+=`<button class="pick ghost" data-p="${PROGS.indexOf(pg)}"><span class="em">${pg.em}</span><span class="nm">${pg.name}<span class="feel">${pg.feel}</span><span class="sub mono">${progLabel(pg,K)}</span></span></button>`; }); return o+`</div>`; };
   h+=list(mine);
-  if(other.length){ h+=`<h3>${S.mode==='major'?'マイナーの札（平行調に置く）':'メジャーの札（平行調に置く）'}</h3>`+list(other); }
+  if(other.length){ h+=`<h3>${K.mode==='major'?'マイナーの札（平行調に置く）':'メジャーの札（平行調に置く）'}</h3>`+list(other); }
   const sh=sheet(h);
   sh.querySelectorAll('[data-p]').forEach(b=>b.addEventListener('click',()=>placeProg(PROGS[+b.dataset.p], start)));
 }
@@ -345,7 +358,7 @@ const stepW = 30, rowH = 26;
 
 function renderTop(){
   if(cur) $('songName').textContent = cur.name;
-  $('keyTxt').textContent = NOTE_NAMES[S.root] + ' ' + (S.mode==='major'?'major':'minor');
+  { const k=keyAt(curBar()); $('keyTxt').textContent = keyName(k) + (S.keys.length>1 ? ` ·${k.bar+1}〜` : ''); }
   $('bpmTxt').textContent = S.bpm + (S.swing.mode==='straight' ? '' : S.swing.mode==='half' ? '≈' : '〜');
   $('metChip').classList.toggle('on', S.met);
 }
@@ -361,7 +374,8 @@ function renderChords(){
   S.chords.forEach((bc,i)=>{
     const has = bc && (bc.a || bc.b);
     const b=document.createElement('button'); b.className='bar'+(has?' set':'')+(bc&&bc.split?' two':''); b.dataset.i=i;
-    b.innerHTML = `<span class="n">${i+1}</span><span class="c">${barLabel(bc)}</span>`;
+    const ks=S.keys.find(k=>k.bar===i); const ktag = (ks && (i>0 || S.keys.length>1)) ? `<span class="k">${keyName(ks)}</span>` : '';
+    b.innerHTML = `<span class="n">${i+1}</span>${ktag}<span class="c">${barLabel(bc)}</span>`;
     b.addEventListener('click',()=>openChordSheet(i));
     el.appendChild(b);
   });
@@ -410,7 +424,7 @@ function setCursor(bar){
   let [r0,r1]=range(); let left=false;
   if(cursor<r0||cursor>=r1){ if(S.loop){ S.loop=null; left=true; save(); renderRuler(); } [r0,r1]=range(); }
   if(playing) step=cursor-r0;
-  drawCursor(); toast(`${bar+1}小節目から`+(left?'（ループ解除）':''));
+  drawCursor(); renderTop(); renderKeys(); toast(`${bar+1}小節目から`+(left?'（ループ解除）':''));
 }
 function drawCursor(){
   const ph=$('playhead'); ph.classList.add('on'); ph.style.left=(44+cursor*stepW)+'px';
@@ -420,27 +434,33 @@ function range(){ const t=S.bars*STEPS; if(S.loop && S.loop.b<S.bars) return [S.
 function renderGrid(){
   const total = S.bars*STEPS;
   renderRuler();
-  const keys=$('keys'); keys.innerHTML='';
+  renderKeys();
   const grid=$('grid'); grid.innerHTML='';
   grid.style.gridTemplateColumns = `repeat(${total}, ${stepW}px)`;
   grid.style.width = total*stepW+'px';
+  const barKeys=[]; for(let b=0;b<S.bars;b++) barKeys.push(keyAt(b));
   for(let m=HIGH; m>=LOW; m--){
-    const k=document.createElement('div'); k.className='key'+(inScale(m)?' in':'')+(isRoot(m)?' root':'');
-    k.textContent = NOTE_NAMES[m%12] + (Math.floor(m/12)-1-(S.octC3?1:0)); keys.appendChild(k);
     for(let s=0;s<total;s++){
-      const c=document.createElement('div');
-      let cls='cell'; if(isRoot(m)) cls+=' root'; else if(inScale(m)) cls+=' in';
+      const c=document.createElement('div'); const K=barKeys[Math.floor(s/STEPS)];
+      let cls='cell'; if(isRoot(m,K)) cls+=' root'; else if(inScale(m,K)) cls+=' in';
       if((s+1)%STEPS===0) cls+=' b4'; else if((s+1)%4===0) cls+=' beat';
       c.className=cls; c.dataset.s=s; c.dataset.m=m; grid.appendChild(c);
     }
   }
   renderNotes();
 }
+function renderKeys(){
+  const keys=$('keys'); keys.innerHTML=''; const K=keyAt(curBar());
+  for(let m=HIGH; m>=LOW; m--){
+    const k=document.createElement('div'); k.className='key'+(inScale(m,K)?' in':'')+(isRoot(m,K)?' root':'');
+    k.textContent = NOTE_NAMES[m%12] + (Math.floor(m/12)-1-(S.octC3?1:0)); keys.appendChild(k);
+  }
+}
 function renderNotes(){
   document.querySelectorAll('.note').forEach(n=>n.remove());
   const grid=$('grid'); const tr=S.tracks[S.active];
   tr.notes.forEach((n,idx)=>{
-    const d=document.createElement('div'); d.className='note'+(inScale(n.m)?'':' out'); d.dataset.idx=idx;
+    const d=document.createElement('div'); d.className='note'+(inScale(n.m, keyAt(Math.floor(n.s/STEPS)))?'':' out'); d.dataset.idx=idx;
     d.style.left = n.s*stepW+'px'; d.style.top=(HIGH-n.m)*rowH+'px'; d.style.width=(n.len*stepW-3)+'px';
     d.addEventListener('pointerdown', noteDown);
     grid.appendChild(d);
@@ -468,7 +488,7 @@ function noteMove(e){
     let s=Math.round((drag.s0*stepW+dx)/(S.len*stepW))*S.len; s=Math.max(0, Math.min(s, total-n.len));
     let m=Math.round(drag.m0 - dy/rowH); m=Math.max(LOW, Math.min(HIGH, m));
     if(s!==n.s){ n.s=s; drag.d.style.left=s*stepW+'px'; }
-    if(m!==n.m){ n.m=m; drag.d.style.top=(HIGH-m)*rowH+'px'; drag.d.classList.toggle('out', !inScale(m)); tone(m, ac().currentTime, .18, 'mel'); }
+    if(m!==n.m){ n.m=m; drag.d.style.top=(HIGH-m)*rowH+'px'; drag.d.classList.toggle('out', !inScale(m, keyAt(Math.floor(n.s/STEPS)))); tone(m, ac().currentTime, .18, 'mel'); }
   }
 }
 function noteUp(e){
@@ -515,20 +535,22 @@ function closeSheet(){ ['dim','sheet'].forEach(id=>{ const e=$(id); if(e) e.remo
 function openChordSheet(i, half){
   if(!S.chords[i]) S.chords[i]={a:null,b:null,split:false};
   const bc=S.chords[i]; half = half || 'a'; if(!bc.split) half='a';
-  const cur=bc[half]; const dia=DIA[S.mode];
+  const cur=bc[half]; const K=keyAt(i); const dia=DIA[K.mode]; const kseg=S.keys.find(k=>k.bar===i);
   let h=`<h3>${i+1}小節目のコード</h3>`;
   h+=`<div class="row" style="align-items:center"><div class="seg"><button class="hsel${!bc.split?' on':''}" data-split="0">1つ</button><button class="hsel${bc.split?' on':''}" data-split="1">2つ</button></div>`;
   if(bc.split) h+=`<div class="seg"><button class="hf${half==='a'?' on':''}" data-h="a">前半 ${bc.a?chordName(bc.a):'·'}</button><button class="hf${half==='b'?' on':''}" data-h="b">後半 ${bc.b?chordName(bc.b):'·'}</button></div>`;
   h+=`</div><div class="row">`;
-  dia.forEach(([lab,deg,q],k)=>{ const r=(S.root+SCALES[S.mode][deg])%12; const on=cur&&cur.root===r&&cur.q===q;
-    h+=`<button class="pick dia${on?' on':''}" data-r="${r}" data-q="${q}">${NOTE_NAMES[r]}${lab}<span class="sub">${DEG[S.mode][k]}</span></button>`; });
+  dia.forEach(([lab,deg,q],k)=>{ const r=(K.root+SCALES[K.mode][deg])%12; const on=cur&&cur.root===r&&cur.q===q;
+    h+=`<button class="pick dia${on?' on':''}" data-r="${r}" data-q="${q}">${NOTE_NAMES[r]}${lab}<span class="sub">${DEG[K.mode][k]}</span></button>`; });
   h+=`</div><h3>その他</h3><div class="row">`;
   for(let r=0;r<12;r++){ h+=`<button class="pick ghost" data-r="${r}" data-q="maj">${NOTE_NAMES[r]}</button>`; }
   h+=`</div><div class="row">`;
   ['min','7','maj7','m7','6','sus4','7sus4','dim','dim7','m7b5','aug','add9','madd9'].forEach(q=>{ h+=`<button class="pick ghost qsel${cur&&cur.q===q?' on':''}" data-q="${q}">${QLABEL[q]}</button>`; });
   h+=`</div><h3>オンコード（ベース）</h3><div class="row"><button class="pick ghost bsel${!(cur&&cur.bass!==undefined&&cur.bass!==null)?' on':''}" data-b="-1">なし</button>`;
   for(let r=0;r<12;r++){ h+=`<button class="pick ghost bsel${cur&&cur.bass===r?' on':''}" data-b="${r}">/${NOTE_NAMES[r]}</button>`; }
-  h+=`</div><div class="row"><button class="pick ghost" id="progHere">♪ ${i+1}小節目から進行を置く</button></div>`;
+  h+=`</div><div class="row"><button class="pick ghost" id="progHere">♪ ${i+1}小節目から進行を置く</button>`;
+  if(i>0) h+=`<button class="pick ghost" id="keyHere">${kseg ? '♭ '+keyName(kseg)+'<span class="sub">ここからのキーを変える</span>' : '♭ ここから転調<span class="sub">いまは '+keyName(K)+'</span>'}</button>`;
+  h+=`</div>`;
   h+=`<div class="foot"><button class="txt danger" id="clearChord">${bc.split?(half==='a'?'前半':'後半')+'を消す':'このコードを消す'}</button><span class="txt" id="curChord">${cur?chordName(cur):'未設定'}</span></div>`;
   const sh=sheet(h);
   let pick = cur ? {...cur} : null;
@@ -544,6 +566,7 @@ function openChordSheet(i, half){
     if(!pick) return; pick.q=b.dataset.q; commit();
   }));
   $('progHere').addEventListener('click',()=>openProgSheet(i));
+  if(i>0) $('keyHere').addEventListener('click',()=>openKeySheet(i));
   $('clearChord').addEventListener('click',()=>{ bc[half]=null; if(!bc.a && !bc.b) S.chords[i]=null; save(); renderChords(); closeSheet(); });
   function commit(){ bc[half]=pick; save(); renderChords(); $('curChord').textContent=chordName(pick);
     sh.querySelectorAll('.pick[data-r]').forEach(b=>b.classList.toggle('on', +b.dataset.r===pick.root && b.dataset.q===pick.q));
@@ -553,18 +576,22 @@ function openChordSheet(i, half){
     playChord(pick, ac().currentTime, .9); }
 }
 
-$('keyChip').addEventListener('click',()=>{
-  let h=`<h3>キー</h3><div class="row">`;
-  for(let r=0;r<12;r++) h+=`<button class="pick${r===S.root?' on':''}" data-r="${r}">${NOTE_NAMES[r]}</button>`;
-  h+=`</div><div class="row"><button class="pick${S.mode==='major'?' on':''}" data-mode="major">メジャー</button><button class="pick${S.mode==='minor'?' on':''}" data-mode="minor">マイナー</button></div>
-  <h3>オクターブ表記</h3><div class="row"><button class="pick${S.octC3?' on':''}" data-oct="1">C3 = 真ん中のド<span class="sub">Cubase</span></button><button class="pick${!S.octC3?' on':''}" data-oct="0">C4 = 真ん中のド<span class="sub">一般</span></button></div>
-  <p class="txt">コードの色分けとスケールの色が変わる。置いたノートはそのまま。</p>`;
+function openKeySheet(bar){
+  const seg=S.keys.find(k=>k.bar===bar); const K=seg||keyAt(bar); let root=K.root, mode=K.mode;
+  let h=`<h3>${bar===0?'曲のキー':bar+1+'小節目からのキー（転調）'}</h3><div class="row">`;
+  for(let r=0;r<12;r++) h+=`<button class="pick ksel${r===root?' on':''}" data-r="${r}">${NOTE_NAMES[r]}</button>`;
+  h+=`</div><div class="row"><button class="pick msel${mode==='major'?' on':''}" data-mode="major">メジャー</button><button class="pick msel${mode==='minor'?' on':''}" data-mode="minor">マイナー</button></div>`;
+  if(bar===0) h+=`<h3>オクターブ表記</h3><div class="row"><button class="pick${S.octC3?' on':''}" data-oct="1">C3 = 真ん中のド<span class="sub">Cubase</span></button><button class="pick${!S.octC3?' on':''}" data-oct="0">C4 = 真ん中のド<span class="sub">一般</span></button></div>`;
+  h+=`<p class="txt">${bar===0?'コードの色分けとスケールの色が変わる。置いたノートはそのまま。':'この小節から先の色分けとコード候補が変わる。置いたノートはそのまま。次の転調があれば、そこまで。'}</p>`;
+  if(bar>0 && seg) h+=`<div class="foot"><button class="txt danger" id="delKey">この転調を消す</button><span class="txt">前のキーに戻る</span></div>`;
   const sh=sheet(h);
-  sh.querySelectorAll('[data-r]').forEach(b=>b.addEventListener('click',()=>{ S.root=+b.dataset.r; after(); }));
-  sh.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{ S.mode=b.dataset.mode; after(); }));
-  sh.querySelectorAll('[data-oct]').forEach(b=>b.addEventListener('click',()=>{ S.octC3 = b.dataset.oct==='1'; after(); }));
-  function after(){ save(); renderTop(); renderChords(); renderGrid(); closeSheet(); }
-});
+  const apply=()=>{ setKey(bar, root, mode); save(); renderTop(); renderChords(); renderGrid(); sh.querySelectorAll('.ksel').forEach(x=>x.classList.toggle('on',+x.dataset.r===root)); sh.querySelectorAll('.msel').forEach(x=>x.classList.toggle('on',x.dataset.mode===mode)); toast((bar===0?'':bar+1+'小節目から ')+keyName({root,mode})); };
+  sh.querySelectorAll('.ksel').forEach(b=>b.addEventListener('click',()=>{ root=+b.dataset.r; apply(); }));
+  sh.querySelectorAll('.msel').forEach(b=>b.addEventListener('click',()=>{ mode=b.dataset.mode; apply(); }));
+  sh.querySelectorAll('[data-oct]').forEach(b=>b.addEventListener('click',()=>{ S.octC3 = b.dataset.oct==='1'; save(); renderGrid(); closeSheet(); }));
+  const dk=$('delKey'); if(dk) dk.addEventListener('click',()=>{ removeKey(bar); save(); renderTop(); renderChords(); renderGrid(); closeSheet(); toast('転調を消した'); });
+}
+$('keyChip').addEventListener('click',()=>openKeySheet(keyAt(curBar()).bar));
 $('bpmChip').addEventListener('click',()=>{
   const sh=sheet(`<h3>テンポ</h3><div class="bpmrow"><div class="stepper"><button id="bm">−</button><button id="bp">＋</button></div><div class="big mono" id="bv">${S.bpm}</div></div><input type="range" min="40" max="200" value="${S.bpm}" id="br" style="width:100%;margin-top:12px">
     <h3 style="margin-top:18px">リズム</h3>
@@ -596,13 +623,13 @@ $('moreBtn').addEventListener('click',()=>{
   $('bkPaste').addEventListener('click',()=>{ const t=prompt('控えの文字を貼り付け'); if(!t) return; try{ const o=JSON.parse(t); if(!o.tracks) throw 0; if(playing) stop(); S=normalize(o); save(); renderAll(); closeSheet(); toast('戻した'); }catch(e){ toast('控えの形が違う'); } });
   $('songRen').addEventListener('click',()=>{ const n=prompt('曲の名前', cur.name); if(n){ cur.name=n; saveLib(); renderTop(); } closeSheet(); });
   $('toLib').addEventListener('click',()=>{ closeSheet(); showLib(); });
-  $('delBar').addEventListener('click',()=>{ if(S.bars<=1) return; S.bars--; S.chords.pop(); if(S.loop){ S.loop.b=Math.min(S.loop.b,S.bars-1); if(S.loop.a>S.loop.b) S.loop=null; } const lim=S.bars*STEPS; S.tracks.forEach(t=>t.notes=t.notes.filter(n=>n.s<lim)); if(cursor>=lim) cursor=0; save(); renderChords(); renderGrid(); drawCursor(); closeSheet(); });
+  $('delBar').addEventListener('click',()=>{ if(S.bars<=1) return; S.bars--; S.chords.pop(); if(S.loop){ S.loop.b=Math.min(S.loop.b,S.bars-1); if(S.loop.a>S.loop.b) S.loop=null; } const lim=S.bars*STEPS; S.tracks.forEach(t=>t.notes=t.notes.filter(n=>n.s<lim)); if(cursor>=lim) cursor=0; S.keys=S.keys.filter(k=>k.bar<S.bars); save(); renderTop(); renderChords(); renderGrid(); drawCursor(); closeSheet(); });
 });
 
 // ---------- transport ----------
 let playing=false, timer=null, nextT=0, step=0;
 $('playBtn').addEventListener('click',()=>{ playing?stop():start(); });
-$('homeBtn').addEventListener('click',()=>{ const [r0]=range(); cursor=r0; if(playing){ stop(); start(); } else drawCursor(); const w=$('rollwrap'); w.scrollLeft=Math.max(0, r0*stepW-10); });
+$('homeBtn').addEventListener('click',()=>{ const [r0]=range(); cursor=r0; if(playing){ stop(); start(); } else drawCursor(); renderTop(); renderKeys(); const w=$('rollwrap'); w.scrollLeft=Math.max(0, r0*stepW-10); });
 function start(){
   const a=ac();
   const go=()=>{ if(playing) return; playing=true; { const [r0,r1]=range(); step = (cursor>=r0&&cursor<r1) ? cursor-r0 : 0; } nextT=a.currentTime+.05;
@@ -614,7 +641,7 @@ function start(){
 }
 function stop(){
   playing=false; clearInterval(timer); $('playBtn').textContent='▶'; $('playBtn').classList.remove('on');
-  { const a=ac(); const spb=60/S.bpm/4; const [r0,r1]=range(); const s=r0+((lastStep.s-r0+Math.max(0,a.currentTime-lastStep.t)/spb)%(r1-r0)); cursor=Math.floor(s/STEPS)*STEPS; drawCursor(); }
+  { const a=ac(); const spb=60/S.bpm/4; const [r0,r1]=range(); const s=r0+((lastStep.s-r0+Math.max(0,a.currentTime-lastStep.t)/spb)%(r1-r0)); cursor=Math.floor(s/STEPS)*STEPS; drawCursor(); renderTop(); renderKeys(); }
   document.querySelectorAll('.bar.now,.rb.now').forEach(b=>b.classList.remove('now'));
 }
 function schedule(){
