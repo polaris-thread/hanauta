@@ -52,6 +52,12 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .bar.set{border-style:solid;background:var(--cell-in);border-color:transparent}
 .bar.now{outline:2px solid var(--play);outline-offset:-2px}
 .bar.add{width:44px;color:var(--ink2);font-size:20px}
+.bar.prog{width:auto;padding:0 12px;border-style:solid;background:var(--bg);color:var(--ink2);font-size:13px;font-weight:500}
+.prog-list .pick{flex:1 1 100%;height:auto;min-height:52px;padding:8px 12px;text-align:left;display:flex;align-items:center;gap:10px}
+.prog-list .pick .em{font-size:20px;flex:none}
+.prog-list .pick .nm{font-size:15px}
+.prog-list .pick .nm .feel{font-size:11px;color:var(--ink2);font-weight:500;margin-left:6px}
+.prog-list .pick .sub{display:block;font-size:11px;letter-spacing:.02em;margin-top:2px}
 .bar.two{width:auto;min-width:76px;padding:0 10px}
 .bar.two .c{font-size:15px;white-space:nowrap}
 
@@ -207,8 +213,8 @@ const DIA = {
   minor:[['m',0,'min'],['dim',1,'dim'],['',2,'maj'],['m',3,'min'],['m',4,'min'],['',5,'maj'],['',6,'maj']],
 };
 const DEG = { major:['I','ii','iii','IV','V','vi','vii°'], minor:['i','ii°','III','iv','v','VI','VII'] };
-const QUAL = { maj:[0,4,7], min:[0,3,7], dim:[0,3,6], aug:[0,4,8], sus4:[0,5,7], maj7:[0,4,7,11], m7:[0,3,7,10], '7':[0,4,7,10], add9:[0,4,7,14], madd9:[0,3,7,14], m7b5:[0,3,6,10], '7sus4':[0,5,7,10], dim7:[0,3,6,9] };
-const QLABEL = { maj:'', min:'m', dim:'dim', aug:'aug', sus4:'sus4', maj7:'M7', m7:'m7', '7':'7', add9:'add9', madd9:'m(add9)', m7b5:'m7♭5', '7sus4':'7sus4', dim7:'dim7' };
+const QUAL = { maj:[0,4,7], min:[0,3,7], dim:[0,3,6], aug:[0,4,8], sus4:[0,5,7], maj7:[0,4,7,11], m7:[0,3,7,10], '7':[0,4,7,10], add9:[0,4,7,14], madd9:[0,3,7,14], m7b5:[0,3,6,10], '7sus4':[0,5,7,10], dim7:[0,3,6,9], '6':[0,4,7,9] };
+const QLABEL = { maj:'', min:'m', dim:'dim', aug:'aug', sus4:'sus4', maj7:'M7', m7:'m7', '7':'7', add9:'add9', madd9:'m(add9)', m7b5:'m7♭5', '7sus4':'7sus4', dim7:'dim7', '6':'6' };
 const STEPS = 16;              // 16分 × 1小節
 const LOW = 48, HIGH = 84;     // C2..C5（Cubase表記）
 const KEY = 'hanauta-v0';
@@ -286,6 +292,54 @@ function swingOff(s){ const m=S.swing.mode; if(m==='straight') return 0;
   const k=s%4; return k===2 ? 2/3 : (k===1||k===3) ? 1/3 : 0; }
 const chordName = ch => ch ? NOTE_NAMES[ch.root] + QLABEL[ch.q] + ((ch.bass!==undefined && ch.bass!==null) ? '/' + NOTE_NAMES[ch.bass] : '') : '';
 
+
+// ---------- 進行の札 ----------
+// d＝トニックからの半音距離、q＝響き、b＝ベース（オンコード）。1小節に2つのときは配列を入れ子にする。
+// mode＝札の生まれ（major/minor）。今のキーと違うときは平行調のトニックに置く。
+const PROGS = [
+  { em:'🌸', name:'カノン', feel:'素直', mode:'major', bars:[[0,'maj'],[7,'maj'],[9,'min'],[4,'min'],[5,'maj'],[0,'maj'],[5,'maj'],[7,'maj']] },
+  { em:'🎸', name:'ポップパンク', feel:'素直', mode:'major', bars:[[0,'maj'],[7,'maj'],[9,'min'],[5,'maj']] },
+  { em:'👑', name:'王道', feel:'切ない', mode:'major', bars:[[5,'maj7'],[7,'7'],[4,'m7'],[9,'m7']] },
+  { em:'🌃', name:'小室', feel:'疾走', mode:'major', bars:[[9,'min'],[5,'maj'],[7,'maj'],[0,'maj']] },
+  { em:'🌆', name:'丸サ', feel:'おしゃれ', mode:'major', bars:[[5,'maj7'],[4,'7'],[9,'m7'],[[7,'m7'],[0,'7']]] },
+  { em:'🔁', name:'循環', feel:'和やか', mode:'major', bars:[[0,'maj7'],[9,'m7'],[2,'m7'],[7,'7']] },
+  { em:'🌙', name:'逆循環', feel:'エモい', mode:'major', bars:[[9,'min'],[5,'maj'],[0,'maj'],[7,'maj']] },
+  { em:'💗', name:'セカンダリー', feel:'感情的', mode:'major', bars:[[0,'maj'],[4,'7'],[9,'min'],[5,'maj']] },
+  { em:'🍂', name:'哀愁', feel:'サブドミナントマイナー', mode:'major', bars:[[0,'maj'],[5,'maj'],[5,'min'],[0,'maj']] },
+  { em:'🎢', name:'ラインクリシェ', feel:'ワクワク', mode:'major', bars:[[0,'maj'],[0,'aug'],[0,'6'],[0,'7'],[5,'maj'],[5,'min'],[0,'maj'],[7,'7']] },
+  { em:'🎷', name:'コンファメーション', feel:'ジャズ', mode:'major', bars:[[0,'maj7'],[[11,'m7b5'],[4,'7']],[9,'m7'],[[7,'m7'],[0,'7']],[5,'maj7'],[[5,'m7'],[10,'7']],[[4,'m7'],[9,'7']],[[2,'m7'],[7,'7']]] },
+  { em:'🎉', name:'ダブルドミナント', feel:'楽しい', mode:'major', bars:[[0,'maj'],[2,'7'],[2,'m7'],[7,'7']] },
+  { em:'🤘', name:'ロック', feel:'骨太', mode:'major', bars:[[0,'maj'],[3,'maj'],[5,'maj'],[7,'maj']] },
+  { em:'🚶', name:'ベース上行', feel:'前進', mode:'major', bars:[[0,'maj'],[2,'min'],[0,'maj',4],[5,'maj']] },
+  { em:'🌵', name:'ドライ', feel:'乾いた', mode:'major', bars:[[0,'maj'],[7,'maj'],[2,'min'],[9,'min']] },
+  { em:'🎺', name:'ブルース', feel:'12小節', mode:'major', bars:[[0,'7'],[0,'7'],[0,'7'],[0,'7'],[5,'7'],[5,'7'],[0,'7'],[0,'7'],[7,'7'],[5,'7'],[0,'7'],[7,'7']] },
+  { em:'💃', name:'アンダルシア', feel:'情熱', mode:'minor', bars:[[0,'min'],[10,'maj'],[8,'maj'],[7,'7']] },
+  { em:'🕯️', name:'マイナー循環', feel:'しっとり', mode:'minor', bars:[[0,'min'],[5,'min'],[7,'7'],[0,'min']] },
+  { em:'🌊', name:'マイナー王道', feel:'切ない', mode:'minor', bars:[[0,'min'],[8,'maj'],[10,'maj'],[0,'min']] },
+];
+function progTonic(pg){ if(pg.mode===S.mode) return S.root; return (S.root + (S.mode==='major' ? 9 : 3)) % 12; }
+function progChord(t, c){ const ch={root:(t+c[0])%12, q:c[1]}; if(c[2]!==undefined) ch.bass=(t+c[2])%12; return ch; }
+function progBars(pg){ const t=progTonic(pg); return pg.bars.map(b => Array.isArray(b[0]) ? {a:progChord(t,b[0]), b:progChord(t,b[1]), split:true} : {a:progChord(t,b), b:null, split:false}); }
+function progLabel(pg){ return progBars(pg).map(barLabel).join('  '); }
+function placeProg(pg){
+  const bars=progBars(pg);
+  while(S.bars<bars.length){ S.bars++; S.chords.push(null); }
+  bars.forEach((bc,i)=>{ S.chords[i]=bc; });
+  for(let i=bars.length;i<S.bars;i++) S.chords[i]=null;
+  save(); renderChords(); renderGrid(); closeSheet();
+  playChord(bars[0].a, ac().currentTime, .9);
+  toast(pg.name+'を置いた。▶で鳴らして');
+}
+function openProgSheet(){
+  let h=`<h3>進行の札</h3><p class="txt" style="margin:0 0 10px">${NOTE_NAMES[S.root]} ${S.mode==='major'?'major':'minor'} に合わせて置く。1小節目から置き直す（今のコードは上書き）。</p>`;
+  const mine=PROGS.filter(p=>p.mode===S.mode), other=PROGS.filter(p=>p.mode!==S.mode);
+  const list=arr=>{ let o=`<div class="row prog-list">`; arr.forEach((pg,k)=>{ o+=`<button class="pick ghost" data-p="${PROGS.indexOf(pg)}"><span class="em">${pg.em}</span><span class="nm">${pg.name}<span class="feel">${pg.feel}</span><span class="sub mono">${progLabel(pg)}</span></span></button>`; }); return o+`</div>`; };
+  h+=list(mine);
+  if(other.length){ h+=`<h3>${S.mode==='major'?'マイナーの札（平行調に置く）':'メジャーの札（平行調に置く）'}</h3>`+list(other); }
+  const sh=sheet(h);
+  sh.querySelectorAll('[data-p]').forEach(b=>b.addEventListener('click',()=>placeProg(PROGS[+b.dataset.p])));
+}
+
 // ---------- render ----------
 const $ = id => document.getElementById(id);
 const stepW = 30, rowH = 26;
@@ -303,6 +357,8 @@ function barLabel(bc){
 }
 function renderChords(){
   const el=$('chords'); el.innerHTML='';
+  const pb=document.createElement('button'); pb.className='bar prog'; pb.textContent='♪ 進行'; pb.title='進行の札から置く';
+  pb.addEventListener('click',openProgSheet); el.appendChild(pb);
   S.chords.forEach((bc,i)=>{
     const has = bc && (bc.a || bc.b);
     const b=document.createElement('button'); b.className='bar'+(has?' set':'')+(bc&&bc.split?' two':''); b.dataset.i=i;
@@ -440,7 +496,7 @@ function openChordSheet(i, half){
   h+=`</div><h3>その他</h3><div class="row">`;
   for(let r=0;r<12;r++){ h+=`<button class="pick ghost" data-r="${r}" data-q="maj">${NOTE_NAMES[r]}</button>`; }
   h+=`</div><div class="row">`;
-  ['min','7','maj7','m7','sus4','7sus4','dim','dim7','m7b5','aug','add9','madd9'].forEach(q=>{ h+=`<button class="pick ghost qsel${cur&&cur.q===q?' on':''}" data-q="${q}">${QLABEL[q]}</button>`; });
+  ['min','7','maj7','m7','6','sus4','7sus4','dim','dim7','m7b5','aug','add9','madd9'].forEach(q=>{ h+=`<button class="pick ghost qsel${cur&&cur.q===q?' on':''}" data-q="${q}">${QLABEL[q]}</button>`; });
   h+=`</div><h3>オンコード（ベース）</h3><div class="row"><button class="pick ghost bsel${!(cur&&cur.bass!==undefined&&cur.bass!==null)?' on':''}" data-b="-1">なし</button>`;
   for(let r=0;r<12;r++){ h+=`<button class="pick ghost bsel${cur&&cur.bass===r?' on':''}" data-b="${r}">/${NOTE_NAMES[r]}</button>`; }
   h+=`</div><div class="foot"><button class="txt danger" id="clearChord">${bc.split?(half==='a'?'前半':'後半')+'を消す':'このコードを消す'}</button><span class="txt" id="curChord">${cur?chordName(cur):'未設定'}</span></div>`;
