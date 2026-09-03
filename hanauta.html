@@ -198,7 +198,7 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
     </div>
     <button class="chip" id="lyrBtn" title="歌詞メモ">✎ 歌詞</button>
     <button class="chip" id="moreBtn">…</button>
-    <div class="hint">タップで置く・長押しで消す<br>すぐ引けば動く・右端で伸び縮み</div>
+    <div class="hint">タップで置く・長押しで消す・右端で伸び縮み<br>小節番号：タップでループ・長押しで縦線をそこへ</div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -389,7 +389,11 @@ function renderRuler(){
   for(let i=0;i<S.bars;i++){
     const b=document.createElement('button'); b.className='rb'; b.style.width=STEPS*stepW+'px'; b.textContent=i+1; b.dataset.i=i;
     if(S.loop && i>=S.loop.a && i<=S.loop.b) b.classList.add('loop');
+    let hold=null, held=false;
+    b.addEventListener('pointerdown',()=>{ held=false; hold=setTimeout(()=>{ held=true; setCursor(i); }, 450); });
+    ['pointerup','pointercancel','pointerleave'].forEach(ev=>b.addEventListener(ev,()=>clearTimeout(hold)));
     b.addEventListener('click',()=>{
+      if(held){ held=false; return; }
       if(!S.loop) S.loop={a:i,b:i};
       else if(i>=S.loop.a && i<=S.loop.b) S.loop=null;
       else S.loop={a:Math.min(S.loop.a,i), b:Math.max(S.loop.b,i)};
@@ -398,6 +402,19 @@ function renderRuler(){
     });
     el.appendChild(b);
   }
+}
+// 縦線（再生の頭）：小節番号の長押しで飛ぶ。ループの外なら外れて、ループ内なら中で止まる
+let cursor=0;   // 16分ステップ
+function setCursor(bar){
+  cursor=bar*STEPS;
+  let [r0,r1]=range(); let left=false;
+  if(cursor<r0||cursor>=r1){ if(S.loop){ S.loop=null; left=true; save(); renderRuler(); } [r0,r1]=range(); }
+  if(playing) step=cursor-r0;
+  drawCursor(); toast(`${bar+1}小節目から`+(left?'（ループ解除）':''));
+}
+function drawCursor(){
+  const ph=$('playhead'); ph.classList.add('on'); ph.style.left=(44+cursor*stepW)+'px';
+  const w=$('rollwrap'); const x=44+cursor*stepW; if(x<w.scrollLeft+44 || x>w.scrollLeft+w.clientWidth-20) w.scrollLeft=Math.max(0,x-100);
 }
 function range(){ const t=S.bars*STEPS; if(S.loop && S.loop.b<S.bars) return [S.loop.a*STEPS, (S.loop.b+1)*STEPS]; if(S.loop) S.loop=null; return [0,t]; }
 function renderGrid(){
@@ -566,16 +583,16 @@ $('moreBtn').addEventListener('click',()=>{
   $('bkPaste').addEventListener('click',()=>{ const t=prompt('控えの文字を貼り付け'); if(!t) return; try{ const o=JSON.parse(t); if(!o.tracks) throw 0; if(playing) stop(); S=normalize(o); save(); renderAll(); closeSheet(); toast('戻した'); }catch(e){ toast('控えの形が違う'); } });
   $('songRen').addEventListener('click',()=>{ const n=prompt('曲の名前', cur.name); if(n){ cur.name=n; saveLib(); renderTop(); } closeSheet(); });
   $('toLib').addEventListener('click',()=>{ closeSheet(); showLib(); });
-  $('delBar').addEventListener('click',()=>{ if(S.bars<=1) return; S.bars--; S.chords.pop(); if(S.loop){ S.loop.b=Math.min(S.loop.b,S.bars-1); if(S.loop.a>S.loop.b) S.loop=null; } const lim=S.bars*STEPS; S.tracks.forEach(t=>t.notes=t.notes.filter(n=>n.s<lim)); save(); renderChords(); renderGrid(); closeSheet(); });
+  $('delBar').addEventListener('click',()=>{ if(S.bars<=1) return; S.bars--; S.chords.pop(); if(S.loop){ S.loop.b=Math.min(S.loop.b,S.bars-1); if(S.loop.a>S.loop.b) S.loop=null; } const lim=S.bars*STEPS; S.tracks.forEach(t=>t.notes=t.notes.filter(n=>n.s<lim)); if(cursor>=lim) cursor=0; save(); renderChords(); renderGrid(); drawCursor(); closeSheet(); });
 });
 
 // ---------- transport ----------
 let playing=false, timer=null, nextT=0, step=0;
 $('playBtn').addEventListener('click',()=>{ playing?stop():start(); });
-$('homeBtn').addEventListener('click',()=>{ const [r0]=range(); if(playing){ stop(); start(); } const w=$('rollwrap'); w.scrollLeft=Math.max(0, r0*stepW-10); });
+$('homeBtn').addEventListener('click',()=>{ const [r0]=range(); cursor=r0; if(playing){ stop(); start(); } else drawCursor(); const w=$('rollwrap'); w.scrollLeft=Math.max(0, r0*stepW-10); });
 function start(){
   const a=ac();
-  const go=()=>{ if(playing) return; playing=true; step=0; nextT=a.currentTime+.05;
+  const go=()=>{ if(playing) return; playing=true; { const [r0,r1]=range(); step = (cursor>=r0&&cursor<r1) ? cursor-r0 : 0; } nextT=a.currentTime+.05;
     $('playBtn').textContent='■'; $('playBtn').classList.add('on'); $('playhead').classList.add('on');
     timer=setInterval(schedule,25); requestAnimationFrame(follow); };
   if(a.state==='running') go();
@@ -583,7 +600,8 @@ function start(){
     Promise.resolve(a.resume()).then(once).catch(once); setTimeout(once, 300); }   // 起きんかっても300msで進む
 }
 function stop(){
-  playing=false; clearInterval(timer); $('playBtn').textContent='▶'; $('playBtn').classList.remove('on'); $('playhead').classList.remove('on');
+  playing=false; clearInterval(timer); $('playBtn').textContent='▶'; $('playBtn').classList.remove('on');
+  { const a=ac(); const spb=60/S.bpm/4; const [r0,r1]=range(); const s=r0+((lastStep.s-r0+Math.max(0,a.currentTime-lastStep.t)/spb)%(r1-r0)); cursor=Math.floor(s/STEPS)*STEPS; drawCursor(); }
   document.querySelectorAll('.bar.now,.rb.now').forEach(b=>b.classList.remove('now'));
 }
 function schedule(){
@@ -660,6 +678,7 @@ function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('on'
 // ---------- pages：曲の一覧 ⇄ 今の画面 ----------
 function renderAll(){
   renderTop(); renderChords(); renderTracks(); renderGrid();
+  if(cursor>=S.bars*STEPS) cursor=0; drawCursor();
   $('lyrText').value = S.lyrics || '';
   $('lenSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',+x.dataset.len===S.len));
 }
