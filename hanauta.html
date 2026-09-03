@@ -320,23 +320,23 @@ function progTonic(pg){ if(pg.mode===S.mode) return S.root; return (S.root + (S.
 function progChord(t, c){ const ch={root:(t+c[0])%12, q:c[1]}; if(c[2]!==undefined) ch.bass=(t+c[2])%12; return ch; }
 function progBars(pg){ const t=progTonic(pg); return pg.bars.map(b => Array.isArray(b[0]) ? {a:progChord(t,b[0]), b:progChord(t,b[1]), split:true} : {a:progChord(t,b), b:null, split:false}); }
 function progLabel(pg){ return progBars(pg).map(barLabel).join('  '); }
-function placeProg(pg){
-  const bars=progBars(pg);
-  while(S.bars<bars.length){ S.bars++; S.chords.push(null); }
-  bars.forEach((bc,i)=>{ S.chords[i]=bc; });
-  for(let i=bars.length;i<S.bars;i++) S.chords[i]=null;
+function placeProg(pg, start){
+  start = start||0; const bars=progBars(pg);
+  while(S.bars<start+bars.length){ S.bars++; S.chords.push(null); }
+  bars.forEach((bc,i)=>{ S.chords[start+i]=bc; });
   save(); renderChords(); renderGrid(); closeSheet();
   playChord(bars[0].a, ac().currentTime, .9);
-  toast(pg.name+'を置いた。▶で鳴らして');
+  toast(`${pg.name}を${start+1}小節目から置いた。▶で鳴らして`);
 }
-function openProgSheet(){
-  let h=`<h3>進行の札</h3><p class="txt" style="margin:0 0 10px">${NOTE_NAMES[S.root]} ${S.mode==='major'?'major':'minor'} に合わせて置く。1小節目から置き直す（今のコードは上書き）。</p>`;
+function openProgSheet(start){
+  start = start||0;
+  let h=`<h3>進行の札</h3><p class="txt" style="margin:0 0 10px">${NOTE_NAMES[S.root]} ${S.mode==='major'?'major':'minor'} に合わせて、${start+1}小節目から置く（そこから先のコードは上書き・足りん小節は足す）。</p>`;
   const mine=PROGS.filter(p=>p.mode===S.mode), other=PROGS.filter(p=>p.mode!==S.mode);
   const list=arr=>{ let o=`<div class="row prog-list">`; arr.forEach((pg,k)=>{ o+=`<button class="pick ghost" data-p="${PROGS.indexOf(pg)}"><span class="em">${pg.em}</span><span class="nm">${pg.name}<span class="feel">${pg.feel}</span><span class="sub mono">${progLabel(pg)}</span></span></button>`; }); return o+`</div>`; };
   h+=list(mine);
   if(other.length){ h+=`<h3>${S.mode==='major'?'マイナーの札（平行調に置く）':'メジャーの札（平行調に置く）'}</h3>`+list(other); }
   const sh=sheet(h);
-  sh.querySelectorAll('[data-p]').forEach(b=>b.addEventListener('click',()=>placeProg(PROGS[+b.dataset.p])));
+  sh.querySelectorAll('[data-p]').forEach(b=>b.addEventListener('click',()=>placeProg(PROGS[+b.dataset.p], start)));
 }
 
 // ---------- render ----------
@@ -357,7 +357,7 @@ function barLabel(bc){
 function renderChords(){
   const el=$('chords'); el.innerHTML='';
   const pb=document.createElement('button'); pb.className='bar prog'; pb.textContent='♪ 進行'; pb.title='進行の札から置く';
-  pb.addEventListener('click',openProgSheet); el.appendChild(pb);
+  pb.addEventListener('click',()=>openProgSheet(0)); el.appendChild(pb);
   S.chords.forEach((bc,i)=>{
     const has = bc && (bc.a || bc.b);
     const b=document.createElement('button'); b.className='bar'+(has?' set':'')+(bc&&bc.split?' two':''); b.dataset.i=i;
@@ -498,7 +498,8 @@ function openChordSheet(i, half){
   ['min','7','maj7','m7','6','sus4','7sus4','dim','dim7','m7b5','aug','add9','madd9'].forEach(q=>{ h+=`<button class="pick ghost qsel${cur&&cur.q===q?' on':''}" data-q="${q}">${QLABEL[q]}</button>`; });
   h+=`</div><h3>オンコード（ベース）</h3><div class="row"><button class="pick ghost bsel${!(cur&&cur.bass!==undefined&&cur.bass!==null)?' on':''}" data-b="-1">なし</button>`;
   for(let r=0;r<12;r++){ h+=`<button class="pick ghost bsel${cur&&cur.bass===r?' on':''}" data-b="${r}">/${NOTE_NAMES[r]}</button>`; }
-  h+=`</div><div class="foot"><button class="txt danger" id="clearChord">${bc.split?(half==='a'?'前半':'後半')+'を消す':'このコードを消す'}</button><span class="txt" id="curChord">${cur?chordName(cur):'未設定'}</span></div>`;
+  h+=`</div><div class="row"><button class="pick ghost" id="progHere">♪ ${i+1}小節目から進行を置く</button></div>`;
+  h+=`<div class="foot"><button class="txt danger" id="clearChord">${bc.split?(half==='a'?'前半':'後半')+'を消す':'このコードを消す'}</button><span class="txt" id="curChord">${cur?chordName(cur):'未設定'}</span></div>`;
   const sh=sheet(h);
   let pick = cur ? {...cur} : null;
   sh.querySelectorAll('.hsel').forEach(b=>b.addEventListener('click',()=>{ bc.split = b.dataset.split==='1'; if(!bc.split) bc.b=null; save(); renderChords(); openChordSheet(i, 'a'); }));
@@ -512,6 +513,7 @@ function openChordSheet(i, half){
   sh.querySelectorAll('.qsel').forEach(b=>b.addEventListener('click',()=>{
     if(!pick) return; pick.q=b.dataset.q; commit();
   }));
+  $('progHere').addEventListener('click',()=>openProgSheet(i));
   $('clearChord').addEventListener('click',()=>{ bc[half]=null; if(!bc.a && !bc.b) S.chords[i]=null; save(); renderChords(); closeSheet(); });
   function commit(){ bc[half]=pick; save(); renderChords(); $('curChord').textContent=chordName(pick);
     sh.querySelectorAll('.pick[data-r]').forEach(b=>b.classList.toggle('on', +b.dataset.r===pick.root && b.dataset.q===pick.q));
@@ -603,7 +605,7 @@ function follow(){
   const a=ac(); const spb=60/S.bpm/4; const [r0,r1]=range();
   const s = r0 + ((lastStep.s - r0 + (a.currentTime-lastStep.t)/spb) % (r1-r0));
   const x = 44 + s*stepW; $('playhead').style.left = x+'px';
-  const bar=Math.floor(s/STEPS); document.querySelectorAll('.bar').forEach((b,i)=>b.classList.toggle('now', i===bar));
+  const bar=Math.floor(s/STEPS); document.querySelectorAll('.bar[data-i]').forEach(b=>b.classList.toggle('now', +b.dataset.i===bar));
   document.querySelectorAll('.rb').forEach((b,i)=>b.classList.toggle('now', i===bar));
   const w=$('rollwrap'); if(x < w.scrollLeft+44 || x > w.scrollLeft+w.clientWidth-20) w.scrollLeft = Math.max(0, x-100);
   requestAnimationFrame(follow);
