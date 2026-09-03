@@ -37,6 +37,9 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .top{display:flex;align-items:center;gap:8px;padding:10px 12px 8px;border-bottom:1px solid var(--line);background:var(--panel)}
 .top .chip{flex:0 1 auto;min-width:0}
 .top .chip>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.top .chip.two{flex-direction:column;justify-content:center;gap:0;height:40px;padding:0 10px;line-height:1.1}
+.top .chip.two .lbl{font-size:9px}
+.top .chip.two>span:last-child{font-size:13px}
 .top .play{flex:none}
 .top .name{font-weight:700;letter-spacing:.02em;margin-right:auto;font-size:15px}
 @media (max-width:430px){.top .name{display:none}.top{justify-content:space-between}}
@@ -118,8 +121,10 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .seg{display:inline-flex;flex:none;border:1px solid var(--line);border-radius:18px;overflow:hidden;height:36px}
 .seg button{padding:0 10px;font-weight:500;color:var(--ink2);font-size:13px}
 .seg button.on{background:var(--ink);color:var(--bg)}
-.tools .hint{font-size:11px;color:var(--ink2);margin-left:auto;text-align:right;line-height:1.3;flex:1;min-width:0}
-@media (max-width:400px){.tools .hint{display:none}}
+.tools .tipBtn{margin-left:auto}
+@media (max-width:360px){.tools{gap:6px;padding-left:8px;padding-right:8px}.seg button{padding:0 7px;font-size:12px}.tools .chip{padding:0 10px}.lyrTxt{display:none}}
+.tip{font-size:14px;line-height:1.8;color:var(--ink);margin:0 0 6px}
+.tip b{font-weight:700}
 
 /* sheet */
 .dim{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:9}
@@ -170,8 +175,8 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
   <div class="top">
     <button class="chip" id="backBtn" aria-label="曲の一覧へ" title="曲の一覧へ">‹</button>
     <div class="name" id="songName">曲</div>
-    <button class="chip" id="keyChip"><span class="lbl">key</span><span id="keyTxt">C major</span></button>
-    <button class="chip mono" id="bpmChip"><span class="lbl">bpm</span><span id="bpmTxt">96</span></button>
+    <button class="chip two" id="keyChip"><span class="lbl">key</span><span id="keyTxt">C major</span></button>
+    <button class="chip two mono" id="bpmChip"><span class="lbl">bpm</span><span id="bpmTxt">96</span></button>
     <button class="chip" id="metChip" title="メトロノーム">♩</button>
     <button class="chip" id="homeBtn" aria-label="頭に戻る" title="ループの頭に戻る">⏮</button>
     <button class="play" id="playBtn" aria-label="再生">▶</button>
@@ -201,9 +206,9 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
       <button data-len="4">1/4</button>
       <button data-len="8">1/2</button>
     </div>
-    <button class="chip" id="lyrBtn" title="歌詞メモ">✎ 歌詞</button>
+    <button class="chip" id="lyrBtn" title="歌詞メモ">✎<span class="lyrTxt"> 歌詞</span></button>
     <button class="chip" id="moreBtn">…</button>
-    <div class="hint">タップで置く・長押しで消す・右端で伸び縮み<br>小節番号：タップでループ・長押しで縦線をそこへ</div>
+    <button class="chip tipBtn" id="tipBtn" aria-label="使い方" title="使い方">💡</button>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -607,6 +612,14 @@ $('bpmChip').addEventListener('click',()=>{
   sh.querySelectorAll('.swt').forEach(b=>b.addEventListener('click',()=>{ S.swing.mode=b.dataset.t; save(); renderTop(); sh.querySelectorAll('.swt').forEach(x=>x.classList.toggle('on',x===b)); toast(RHYTHM[S.swing.mode]); }));
 });
 $('metChip').addEventListener('click',()=>{ S.met=!S.met; save(); renderTop(); });
+$('tipBtn').addEventListener('click',()=>{
+  sheet(`<h3>使い方</h3>
+<p class="tip"><b>ロール</b>：タップで置く・長押しで消す・右端をつまんで伸び縮み・つかんで移動</p>
+<p class="tip"><b>小節番号</b>：タップでループ・長押しで縦線をそこへ（▶ はそこから・⏮ は頭へ）</p>
+<p class="tip"><b>コードの帯</b>：タップでコード・進行・転調のシート</p>
+<p class="tip"><b>上の帯</b>：key／bpm はタップで変える・♩ はメトロノーム</p>
+<p class="tip"><b>下の帯</b>：1/16〜1/2 は置く音の長さ・✎ は歌詞メモ・… は曲の控えや書き出し</p>`);
+});
 $('lenSeg').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{ S.len=+b.dataset.len; save(); $('lenSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); }));
 
 $('moreBtn').addEventListener('click',()=>{
