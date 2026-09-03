@@ -243,10 +243,14 @@ function fmt(iso){ if(!iso) return '—'; const d=new Date(iso); return `${d.get
 // ---------- audio ----------
 let AC=null, master=null;
 function ac(){
+  if(AC && AC.state==='closed'){ AC=null; }
   if(!AC){ AC = new (window.AudioContext||window.webkitAudioContext)(); master=AC.createGain(); master.gain.value=.8; master.connect(AC.destination); }
-  if(AC.state==='suspended') AC.resume();
+  if(AC.state!=='running'){ try{ AC.resume(); }catch(e){} }
   return AC;
 }
+// 画面に戻ってきたとき・指が触れたときにも起こす（iOSの中断明け）
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden && AC && AC.state!=='running'){ try{ AC.resume(); }catch(e){} } });
+document.addEventListener('pointerdown',()=>{ if(AC && AC.state!=='running'){ try{ AC.resume(); }catch(e){} } }, {passive:true});
 const f = m => 440*Math.pow(2,(m-69)/12);
 function tone(midi, t, dur, kind){
   const a=ac(); const o=a.createOscillator(); const g=a.createGain();
@@ -512,16 +516,21 @@ let playing=false, timer=null, nextT=0, step=0;
 $('playBtn').addEventListener('click',()=>{ playing?stop():start(); });
 $('homeBtn').addEventListener('click',()=>{ const [r0]=range(); if(playing){ stop(); start(); } const w=$('rollwrap'); w.scrollLeft=Math.max(0, r0*stepW-10); });
 function start(){
-  const a=ac(); playing=true; step=0; nextT=a.currentTime+.05;
-  $('playBtn').textContent='■'; $('playBtn').classList.add('on'); $('playhead').classList.add('on');
-  timer=setInterval(schedule,25); requestAnimationFrame(follow);
+  const a=ac();
+  const go=()=>{ if(playing) return; playing=true; step=0; nextT=a.currentTime+.05;
+    $('playBtn').textContent='■'; $('playBtn').classList.add('on'); $('playhead').classList.add('on');
+    timer=setInterval(schedule,25); requestAnimationFrame(follow); };
+  if(a.state==='running') go();
+  else { let done=false; const once=()=>{ if(done) return; done=true; go(); };
+    Promise.resolve(a.resume()).then(once).catch(once); setTimeout(once, 300); }   // 起きんかっても300msで進む
 }
 function stop(){
   playing=false; clearInterval(timer); $('playBtn').textContent='▶'; $('playBtn').classList.remove('on'); $('playhead').classList.remove('on');
   document.querySelectorAll('.bar.now,.rb.now').forEach(b=>b.classList.remove('now'));
 }
 function schedule(){
-  const a=ac(); const spb=60/S.bpm/4; const [r0,r1]=range(); const span=r1-r0;
+  const a=ac(); if(a.state!=='running') return; const spb=60/S.bpm/4; const [r0,r1]=range(); const span=r1-r0;
+  if(nextT < a.currentTime-.5) nextT=a.currentTime+.05;   // 中断明けで置いてかれとったら、今に合わせ直す
   while(nextT < a.currentTime+.12){
     const s=r0 + (step%span);
     { const bc=S.chords[Math.floor(s/STEPS)]; if(bc){
