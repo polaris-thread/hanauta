@@ -559,11 +559,31 @@ function exportMidi(tr){
   const TPQ=480, tick=TPQ/4; const ev=[];
   tr.notes.forEach(n=>{ const on=Math.round((n.s+swingOff(n.s))*tick); const off=Math.max(on+tick/4, Math.round((n.s+n.len+swingOff(n.s+n.len))*tick)); ev.push([on, 0x90, n.m, 96]); ev.push([off, 0x80, n.m, 0]); });
   ev.sort((a,b)=>a[0]-b[0] || a[1]-b[1]);
-  let trk=[0x00,0xFF,0x51,0x03]; const us=Math.round(60000000/S.bpm); trk.push((us>>16)&255,(us>>8)&255,us&255);
-  let last=0; ev.forEach(e=>{ trk.push(...vlq(e[0]-last), e[1], e[2], e[3]); last=e[0]; });
-  trk.push(0x00,0xFF,0x2F,0x00);
+  // 形式1：0段目＝テンポと拍子、1段目＝トラック名と演奏（DAWが読み慣れとる形）
   const u32=n=>[(n>>>24)&255,(n>>16)&255,(n>>8)&255,n&255];
-  const bytes=new Uint8Array([0x4D,0x54,0x68,0x64,0,0,0,6,0,0,0,1,0,TPQ>>8,TPQ&255, 0x4D,0x54,0x72,0x6B,...u32(trk.length),...trk]);
+  // MIDIの中の文字はWindowsのCubaseが Shift_JIS で読む。ASCII・ひらがな・カタカナ・少しの記号だけ自前で変換、それ以外は _
+  const enc=t=>{ const out=[]; const sym={'\u3000':0x8140,'、':0x8141,'。':0x8142,'・':0x8145,'ー':0x815B,'「':0x8175,'」':0x8176,'！':0x8149,'？':0x8148,'♪':0x81F4,'〜':0x8160,'～':0x8160};
+    for(const ch of t){ const c=ch.codePointAt(0);
+      if(c<0x80) out.push(c);
+      else if(c>=0x3041&&c<=0x3093){ const v=0x829F+(c-0x3041); out.push(v>>8,v&255); }                 // ひらがな
+      else if(c>=0x30A1&&c<=0x30F6){ let v=0x8340+(c-0x30A1); if(v>=0x837F) v++; out.push(v>>8,v&255); }  // カタカナ（0x837Fは飛ぶ）
+      else if(c>=0xFF10&&c<=0xFF19) out.push(0x30+(c-0xFF10));                                           // 全角数字→半角
+      else if(sym[ch]){ out.push(sym[ch]>>8, sym[ch]&255); }
+      else out.push(0x5F); }
+    return out; };
+  const chunk=(arr)=>[0x4D,0x54,0x72,0x6B,...u32(arr.length),...arr];
+  const us=Math.round(60000000/S.bpm);
+  const songName=enc((cur&&cur.name)||'hanauta'), trkName=enc(tr.name||'melody');
+  let t0=[0x00,0xFF,0x03,...vlq(songName.length),...songName,          // 曲名
+          0x00,0xFF,0x51,0x03,(us>>16)&255,(us>>8)&255,us&255,          // テンポ
+          0x00,0xFF,0x58,0x04,4,2,24,8,                                  // 拍子 4/4
+          0x00,0xFF,0x2F,0x00];
+  let t1=[0x00,0xFF,0x03,...vlq(trkName.length),...trkName,              // トラック名
+          0x00,0xC0,0x00];                                               // 音色（ピアノ）
+  let last=0; ev.forEach(e=>{ t1.push(...vlq(e[0]-last), e[1], e[2], e[3]); last=e[0]; });
+  const endTick=Math.max(last, S.bars*STEPS*tick);                       // 小節の終わりまで長さを持たせる
+  t1.push(...vlq(endTick-last),0xFF,0x2F,0x00);
+  const bytes=new Uint8Array([0x4D,0x54,0x68,0x64,0,0,0,6,0,1,0,2,TPQ>>8,TPQ&255, ...chunk(t0), ...chunk(t1)]);
   const name=(tr.name||'melody').replace(/[\\/:*?"<>|]/g,'_')+'.mid';
   closeSheet();
   if(window.claude){ toast('この置き場は .mid を出せん。自前の置き場に移したら動く'); return; }
