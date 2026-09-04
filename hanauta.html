@@ -63,6 +63,7 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .prog-list .pick .em{font-size:20px;flex:none}
 .prog-list .pick .nm{font-size:15px}
 .prog-list .pick .nm .feel{font-size:11px;color:var(--ink2);font-weight:500;margin-left:6px}
+.prog-list .pick .nm .deg{font-size:11px;color:var(--acc);margin-left:6px}
 .prog-list .pick .sub{display:block;font-size:11px;letter-spacing:.02em;margin-top:2px}
 .bar.two{width:auto;min-width:76px;padding:0 10px}
 .bar.two .c{font-size:15px;white-space:nowrap}
@@ -221,8 +222,8 @@ const DIA = {
   minor:[['m',0,'min'],['dim',1,'dim'],['',2,'maj'],['m',3,'min'],['m',4,'min'],['',5,'maj'],['',6,'maj']],
 };
 const DEG = { major:['I','ii','iii','IV','V','vi','vii°'], minor:['i','ii°','III','iv','v','VI','VII'] };
-const QUAL = { maj:[0,4,7], min:[0,3,7], dim:[0,3,6], aug:[0,4,8], sus4:[0,5,7], maj7:[0,4,7,11], m7:[0,3,7,10], '7':[0,4,7,10], add9:[0,4,7,14], madd9:[0,3,7,14], m7b5:[0,3,6,10], '7sus4':[0,5,7,10], dim7:[0,3,6,9], '6':[0,4,7,9] };
-const QLABEL = { maj:'', min:'m', dim:'dim', aug:'aug', sus4:'sus4', maj7:'M7', m7:'m7', '7':'7', add9:'add9', madd9:'m(add9)', m7b5:'m7♭5', '7sus4':'7sus4', dim7:'dim7', '6':'6' };
+const QUAL = { maj:[0,4,7], min:[0,3,7], dim:[0,3,6], aug:[0,4,8], sus4:[0,5,7], maj7:[0,4,7,11], m7:[0,3,7,10], '7':[0,4,7,10], add9:[0,4,7,14], madd9:[0,3,7,14], m7b5:[0,3,6,10], '7sus4':[0,5,7,10], dim7:[0,3,6,9], '6':[0,4,7,9], m6:[0,3,7,9] };
+const QLABEL = { maj:'', min:'m', dim:'dim', aug:'aug', sus4:'sus4', maj7:'M7', m7:'m7', '7':'7', add9:'add9', madd9:'m(add9)', m7b5:'m7♭5', '7sus4':'7sus4', dim7:'dim7', '6':'6', m6:'m6' };
 const STEPS = 16;              // 16分 × 1小節
 const LOW = 48, HIGH = 84;     // C2..C5（Cubase表記）
 const KEY = 'hanauta-v0';
@@ -336,7 +337,27 @@ const PROGS = [
   { em:'💃', name:'アンダルシア', feel:'情熱', mode:'minor', bars:[[0,'min'],[10,'maj'],[8,'maj'],[7,'7']] },
   { em:'🕯️', name:'マイナー循環', feel:'しっとり', mode:'minor', bars:[[0,'min'],[5,'min'],[7,'7'],[0,'min']] },
   { em:'🌊', name:'マイナー王道', feel:'切ない', mode:'minor', bars:[[0,'min'],[8,'maj'],[10,'maj'],[0,'min']] },
+  // 2026-09-04 表から足した札
+  { em:'🎼', name:'カノン（なめらか）', feel:'ベースが下りる', mode:'major', bars:[[0,'maj'],[7,'maj',11],[9,'m7'],[4,'m7',7],[5,'maj'],[0,'maj',4],[2,'m7'],[7,'7']] },
+  { em:'🌤️', name:'1456', feel:'明るい', mode:'major', bars:[[[0,'maj'],[5,'maj']],[[7,'maj'],[9,'m7']],[[2,'m7'],[7,'7']],[0,'maj']] },
+  { em:'🫧', name:'やさしい', feel:'ふわっと', mode:'major', bars:[[[0,'maj'],[2,'m7']],[[4,'m7'],[9,'m7']],[[2,'m7'],[7,'7']],[0,'maj']] },
+  { em:'🏔️', name:'壮大', feel:'ベースは動かん', mode:'major', bars:[[0,'maj'],[7,'maj',0],[5,'maj',0],[0,'maj'],[0,'maj'],[5,'min',0],[5,'m6',0],[0,'maj']] },
+  { em:'🛤️', name:'王道（なめらか）', feel:'ベースがつながる', mode:'major', bars:[[5,'maj'],[7,'7',5],[4,'m7'],[9,'m7'],[5,'maj'],[7,'maj'],[4,'7',8],[9,'m7']] },
+  { em:'🌇', name:'下降', feel:'明るく降りる', mode:'major', bars:[[5,'maj'],[4,'min'],[2,'min'],[0,'maj']] },
+  { em:'🔥', name:'熱情', feel:'dim7 が刺さる', mode:'major', bars:[[5,'maj'],[7,'maj'],[8,'dim7'],[9,'min']] },
+  { em:'🌀', name:'6251', feel:'レトロ', mode:'major', bars:[[[9,'m7'],[2,'m7']],[[7,'7'],[0,'maj']],[[5,'maj'],[11,'m7b5']],[[4,'7'],[9,'m7']]] },
+  { em:'🌅', name:'暗→明', feel:'マイナー始まりで明るめ', mode:'major', bars:[[[9,'m7'],[7,'maj',11]],[[0,'maj'],[5,'maj']],[[2,'m7'],[7,'7']],[[0,'sus4'],[0,'maj']]] },
+  { em:'🍁', name:'舞い落ちる', feel:'順に下がる', mode:'major', bars:[[9,'min'],[7,'maj'],[5,'maj'],[4,'7']] },
+  { em:'🎩', name:'2-5-1', feel:'ジャズ', mode:'major', bars:[[2,'m7'],[7,'7'],[0,'maj7'],[0,'maj7']] },
+  { em:'🍂', name:'枯葉', feel:'ぐるっと回る', mode:'major', bars:[[2,'m7'],[7,'7'],[0,'maj7'],[5,'maj7'],[11,'m7b5'],[4,'7'],[9,'m7'],[9,'7']] },
+  { em:'🍄', name:'マリオ', feel:'パワフル', mode:'major', bars:[[8,'maj'],[10,'maj'],[0,'maj'],[0,'maj']] },
+  { em:'🧝', name:'ドリアン', feel:'冒険', mode:'minor', bars:[[0,'min'],[5,'maj'],[0,'min'],[5,'maj']] },
 ];
+// 度数（札の頭のコードがキーの何番目か）
+const DEG_MAJ = {0:'1',1:'♭2',2:'2',3:'♭3',4:'3',5:'4',6:'♯4',7:'5',8:'♭6',9:'6',10:'♭7',11:'7'};
+const DEG_MIN = {0:'1',1:'♭2',2:'2',3:'♭3',4:'3',5:'4',6:'♯4',7:'5',8:'♭6',9:'6',10:'♭7',11:'7'};
+function progDeg(pg){ const D=pg.mode==='major'?DEG_MAJ:DEG_MIN; return pg.bars.map(b=>{ const c=Array.isArray(b[0])?b[0]:b; return D[c[0]]+(c[1]==='min'||c[1]==='m7'||c[1]==='m6'||c[1]==='madd9'||c[1]==='m7b5'?'m':''); }).join('-'); }
+function progHead(pg){ const c=Array.isArray(pg.bars[0][0])?pg.bars[0][0]:pg.bars[0]; return c[0]; }
 function progTonic(pg,k){ if(pg.mode===k.mode) return k.root; return (k.root + (k.mode==='major' ? 9 : 3)) % 12; }
 function progChord(t, c){ const ch={root:(t+c[0])%12, q:c[1]}; if(c[2]!==undefined) ch.bass=(t+c[2])%12; return ch; }
 function progBars(pg,k){ const t=progTonic(pg,k); return pg.bars.map(b => Array.isArray(b[0]) ? {a:progChord(t,b[0]), b:progChord(t,b[1]), split:true} : {a:progChord(t,b), b:null, split:false}); }
@@ -353,9 +374,11 @@ function openProgSheet(start){
   start = start||0; const K=keyAt(start);
   let h=`<h3>進行の札</h3><p class="txt" style="margin:0 0 10px">${keyName(K)} に合わせて、${start+1}小節目から置く（そこから先のコードは上書き・足りん小節は足す）。</p>`;
   const mine=PROGS.filter(p=>p.mode===K.mode), other=PROGS.filter(p=>p.mode!==K.mode);
-  const list=arr=>{ let o=`<div class="row prog-list">`; arr.forEach((pg,k)=>{ o+=`<button class="pick ghost" data-p="${PROGS.indexOf(pg)}"><span class="em">${pg.em}</span><span class="nm">${pg.name}<span class="feel">${pg.feel}</span><span class="sub mono">${progLabel(pg,K)}</span></span></button>`; }); return o+`</div>`; };
-  h+=list(mine);
-  if(other.length){ h+=`<h3>${K.mode==='major'?'マイナーの札（平行調に置く）':'メジャーの札（平行調に置く）'}</h3>`+list(other); }
+  const list=arr=>{ let o=`<div class="row prog-list">`; arr.forEach((pg,k)=>{ o+=`<button class="pick ghost" data-p="${PROGS.indexOf(pg)}"><span class="em">${pg.em}</span><span class="nm">${pg.name}<span class="feel">${pg.feel}</span><span class="deg mono">${progDeg(pg)}</span><span class="sub mono">${progLabel(pg,K)}</span></span></button>`; }); return o+`</div>`; };
+  const grouped=arr=>{ const order=[0,5,9,2]; const keys=[...new Set(arr.map(progHead))].sort((a,b)=>{ const ia=order.indexOf(a), ib=order.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib) || a-b; });
+    let o=''; keys.forEach(hd=>{ const grp=arr.filter(pg=>progHead(pg)===hd); const t=progTonic(grp[0],K); const c0=Array.isArray(grp[0].bars[0][0])?grp[0].bars[0][0]:grp[0].bars[0]; o+=`<h3>${NOTE_NAMES[(t+hd)%12]}${/^(min|m7|m6|madd9|m7b5)$/.test(c0[1])?'m':''} から</h3>`+list(grp); }); return o; };
+  h+=grouped(mine);
+  if(other.length){ h+=`<h3 style="margin-top:14px">${K.mode==='major'?'── マイナーの札（平行調に置く）':'── メジャーの札（平行調に置く）'}</h3>`+grouped(other); }
   const sh=sheet(h);
   sh.querySelectorAll('[data-p]').forEach(b=>b.addEventListener('click',()=>placeProg(PROGS[+b.dataset.p], start)));
 }
@@ -553,7 +576,7 @@ function openChordSheet(i, half){
   h+=`</div><h3>その他</h3><div class="row">`;
   for(let r=0;r<12;r++){ h+=`<button class="pick ghost" data-r="${r}" data-q="maj">${NOTE_NAMES[r]}</button>`; }
   h+=`</div><div class="row">`;
-  ['min','7','maj7','m7','6','sus4','7sus4','dim','dim7','m7b5','aug','add9','madd9'].forEach(q=>{ h+=`<button class="pick ghost qsel${cur&&cur.q===q?' on':''}" data-q="${q}">${QLABEL[q]}</button>`; });
+  ['min','7','maj7','m7','6','m6','sus4','7sus4','dim','dim7','m7b5','aug','add9','madd9'].forEach(q=>{ h+=`<button class="pick ghost qsel${cur&&cur.q===q?' on':''}" data-q="${q}">${QLABEL[q]}</button>`; });
   h+=`</div><h3>オンコード（ベース）</h3><div class="row"><button class="pick ghost bsel${!(cur&&cur.bass!==undefined&&cur.bass!==null)?' on':''}" data-b="-1">なし</button>`;
   for(let r=0;r<12;r++){ h+=`<button class="pick ghost bsel${cur&&cur.bass===r?' on':''}" data-b="${r}">/${NOTE_NAMES[r]}</button>`; }
   h+=`</div><div class="row"><button class="pick ghost" id="progHere">♪ ${i+1}小節目から進行を置く</button>`;
