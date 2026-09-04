@@ -649,6 +649,8 @@ $('moreBtn').addEventListener('click',()=>{
   const tr=S.tracks[S.active];
   const sh=sheet(`<h3>${tr.name}</h3><div class="row">
     <button class="pick" id="exp">MIDI書き出し<span class="sub">このトラックだけ</span></button>
+    <button class="pick" id="chCopy">コード譜をコピー<span class="sub">キー・BPM・コード・歌詞メモを文字で</span></button>
+    <button class="pick" id="chTxt">コード譜を .txt に</button>
     <button class="pick" id="ren">名前を変える</button>
     <button class="pick" id="clr">ノートを全部消す</button>
     <button class="pick danger" id="del">トラックを消す</button></div>
@@ -656,6 +658,8 @@ $('moreBtn').addEventListener('click',()=>{
     <h3>控え</h3><div class="row"><button class="pick" id="bkCopy">控えをコピー<span class="sub">文字としてクリップボードへ</span></button><button class="pick" id="bkPaste">控えから戻す<span class="sub">貼り付けて復元</span></button></div>
     <p class="txt">置いたものは触るたびに自動で保存される。最終保存 ${fmt(S.savedAt||cur.savedAt)}。控えはメモアプリなどに貼っておくと、ブラウザの記憶が消えても戻せる。</p>`);
   $('exp').addEventListener('click',()=>exportMidi(tr));
+  $('chCopy').addEventListener('click',()=>{ copyText(chordSheetText()); closeSheet(); });
+  $('chTxt').addEventListener('click',()=>{ closeSheet(); shareText(chordSheetText(), safeName(cur?cur.name:'hanauta')+'_コード.txt'); });
   $('ren').addEventListener('click',()=>{ const n=prompt('トラック名', tr.name); if(n){ tr.name=n; save(); renderTracks(); } closeSheet(); });
   $('clr').addEventListener('click',()=>{ tr.notes=[]; save(); renderNotes(); closeSheet(); });
   $('del').addEventListener('click',()=>{ if(S.tracks.length===1){ toast('最後の一本は残す'); return; } S.tracks.splice(S.active,1); S.active=Math.max(0,S.active-1); save(); renderTracks(); renderNotes(); closeSheet(); });
@@ -709,6 +713,33 @@ function follow(){
   const w=$('rollwrap'); if(x < w.scrollLeft+44 || x > w.scrollLeft+w.clientWidth-20) w.scrollLeft = Math.max(0, x-100);
   requestAnimationFrame(follow);
 }
+
+// ---------- コード譜をテキストで ----------
+function chordSheetText(sd, sname){
+  sd = sd || S; sname = sname || (cur&&cur.name) || 'hanauta';
+  const keys=(sd.keys&&sd.keys.length)?sd.keys:[{bar:0,root:sd.root,mode:sd.mode}];
+  const swm=(sd.swing&&sd.swing.mode)||'straight';
+  const lines=[sname, `Key: ${keyName(keys[0])}  BPM: ${sd.bpm}${swm==='half'?'  ハーフタイムシャッフル':swm==='shuffle'?'  シャッフル':''}`, ''];
+  let row=[];
+  const flush=()=>{ if(row.length){ lines.push('| '+row.join(' | ')+' |'); row=[]; } };
+  for(let i=0;i<sd.bars;i++){
+    const seg=keys.find(k=>k.bar===i && i>0);
+    if(seg){ flush(); lines.push(`♭ ${i+1}小節目から ${keyName(seg)}`); }
+    const bc=sd.chords[i]; const lab=!bc ? '—' : bc.split ? `${bc.a?chordName(bc.a):'·'} / ${bc.b?chordName(bc.b):'·'}` : chordName(bc.a);
+    row.push(lab); if(row.length===4) flush();
+  }
+  flush();
+  if(sd.lyrics && sd.lyrics.trim()){ lines.push('', '歌詞', sd.lyrics.trim()); }
+  return lines.join('\n')+'\n';
+}
+async function copyText(t){ try{ await navigator.clipboard.writeText(t); toast('コピーした'); }catch(e){ prompt('これをコピー', t); } }
+function shareText(t, name){
+  if(window.claude){ toast('この置き場は .txt を出せん。コピーは効く'); return; }
+  const file=new File([t],name,{type:'text/plain'});
+  if(navigator.canShare && navigator.canShare({files:[file]})){ navigator.share({files:[file],title:name}).then(()=>toast('書き出した')).catch(()=>{}); }
+  else { const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([t],{type:'text/plain'})); a.download=name; document.body.appendChild(a); a.click(); a.remove(); toast('保存に出した'); }
+}
+const safeName = n => String(n).replace(/[\\/:*?"<>|]/g,'_');
 
 // ---------- MIDI export ----------
 function vlq(n){ const b=[n&0x7f]; while((n>>=7)>0) b.unshift((n&0x7f)|0x80); return b; }
@@ -801,12 +832,14 @@ const esc = t => String(t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&
 function songSheet(sg){
   const sd=normalize(JSON.parse(JSON.stringify(sg.data||{})));
   const expBtns=sd.tracks.map((t,i)=>`<button class="pick" data-exp="${i}">MIDI書き出し<span class="sub">${esc(t.name||'melody')}${t.notes&&t.notes.length?'':'（音なし）'}</span></button>`).join('');
-  const sh=sheet(`<h3>${esc(sg.name)}</h3><div class="row">${expBtns}</div><div class="row">
+  const sh=sheet(`<h3>${esc(sg.name)}</h3><div class="row">${expBtns}<button class="pick" id="sChCopy">コード譜をコピー<span class="sub">キー・BPM・コード・歌詞メモを文字で</span></button><button class="pick" id="sChTxt">コード譜を .txt に</button></div><div class="row">
     <button class="pick" id="sRen">名前を変える</button>
     <button class="pick" id="sDup">複製</button>
     <button class="pick danger" id="sDel">この曲を消す</button></div>
     <p class="txt">${esc(songSub(sg))}</p>`);
   sh.querySelectorAll('[data-exp]').forEach(b=>b.addEventListener('click',()=>exportMidi(sd.tracks[+b.dataset.exp], sd, sg.name)));
+  $('sChCopy').addEventListener('click',()=>{ copyText(chordSheetText(sd, sg.name)); closeSheet(); });
+  $('sChTxt').addEventListener('click',()=>{ closeSheet(); shareText(chordSheetText(sd, sg.name), safeName(sg.name)+'_コード.txt'); });
   $('sRen').addEventListener('click',()=>{ const n=prompt('曲の名前', sg.name); if(n){ sg.name=n; saveLib(); renderLib(); } closeSheet(); });
   $('sDup').addEventListener('click',()=>{ const c={id:uid(), name:sg.name+' のコピー', savedAt:new Date().toISOString(), data:JSON.parse(JSON.stringify(sg.data))}; LIB.songs.push(c); saveLib(); renderLib(); closeSheet(); toast('複製した'); });
   let arm=0;
@@ -825,11 +858,7 @@ $('lyrText').addEventListener('input',e=>{ if(!S) return; S.lyrics=e.target.valu
 $('lyrCopy').addEventListener('click',async()=>{ const t=$('lyrText').value; if(!t){ toast('まだ空や'); return; } try{ await navigator.clipboard.writeText(t); toast('コピーした'); }catch(e){ prompt('これをコピー', t); } });
 $('lyrTxt').addEventListener('click',()=>{
   const t=$('lyrText').value; if(!t){ toast('まだ空や'); return; }
-  const name=(cur?cur.name:'歌詞').replace(/[\\/:*?"<>|]/g,'_')+'.txt';
-  if(window.claude){ toast('この置き場は .txt を出せん。コピーは効く'); return; }
-  const file=new File([t],name,{type:'text/plain'});
-  if(navigator.canShare && navigator.canShare({files:[file]})){ navigator.share({files:[file],title:name}).then(()=>toast('書き出した')).catch(()=>{}); }
-  else { const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([t],{type:'text/plain'})); a.download=name; document.body.appendChild(a); a.click(); a.remove(); toast('保存に出した'); }
+  shareText(t, safeName(cur?cur.name:'歌詞')+'.txt');
 });
 
 $('backBtn').addEventListener('click', showLib);
