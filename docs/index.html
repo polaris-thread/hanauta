@@ -309,7 +309,8 @@ function setKey(bar, root, mode){
 function removeKey(bar){ if(bar===0) return; S.keys=S.keys.filter(k=>k.bar!==bar); }
 // 揺れ：16分ステップ s の遅れ（16分一個ぶんを1とした比率）。100で三連の位置
 const RHYTHM = { straight:'ふつう', shuffle:'シャッフル', half:'ハーフタイムシャッフル' };
-function swingOff(s){ const m=S.swing.mode; if(m==='straight') return 0;
+function swingOff(s){ return swingOffMode(s, S.swing.mode); }
+function swingOffMode(s, m){ if(!m||m==='straight') return 0;
   if(m==='half') return (s%2===1) ? 1/3 : 0;
   const k=s%4; return k===2 ? 2/3 : (k===1||k===3) ? 1/3 : 0; }
 const chordName = ch => ch ? NOTE_NAMES[ch.root] + QLABEL[ch.q] + ((ch.bass!==undefined && ch.bass!==null) ? '/' + NOTE_NAMES[ch.bass] : '') : '';
@@ -712,9 +713,11 @@ function follow(){
 
 // ---------- MIDI export ----------
 function vlq(n){ const b=[n&0x7f]; while((n>>=7)>0) b.unshift((n&0x7f)|0x80); return b; }
-function exportMidi(tr){
+function exportMidi(tr, sd, sname){
+  sd = sd || S; sname = sname || (cur&&cur.name) || 'hanauta';
+  const swm=(sd.swing&&sd.swing.mode)||'straight', sw=x=>swingOffMode(x, swm);
   const TPQ=480, tick=TPQ/4; const ev=[];
-  tr.notes.forEach(n=>{ const on=Math.round((n.s+swingOff(n.s))*tick); const off=Math.max(on+tick/4, Math.round((n.s+n.len+swingOff(n.s+n.len))*tick)); ev.push([on, 0x90, n.m, 96]); ev.push([off, 0x80, n.m, 0]); });
+  tr.notes.forEach(n=>{ const on=Math.round((n.s+sw(n.s))*tick); const off=Math.max(on+tick/4, Math.round((n.s+n.len+sw(n.s+n.len))*tick)); ev.push([on, 0x90, n.m, 96]); ev.push([off, 0x80, n.m, 0]); });
   ev.sort((a,b)=>a[0]-b[0] || a[1]-b[1]);
   // 形式1：0段目＝テンポと拍子、1段目＝トラック名と演奏（DAWが読み慣れとる形）
   const u32=n=>[(n>>>24)&255,(n>>16)&255,(n>>8)&255,n&255];
@@ -729,8 +732,8 @@ function exportMidi(tr){
       else out.push(0x5F); }
     return out; };
   const chunk=(arr)=>[0x4D,0x54,0x72,0x6B,...u32(arr.length),...arr];
-  const us=Math.round(60000000/S.bpm);
-  const songName=enc((cur&&cur.name)||'hanauta'), trkName=enc(tr.name||'melody');
+  const us=Math.round(60000000/(sd.bpm||96));
+  const songName=enc(sname), trkName=enc(tr.name||'melody');
   let t0=[0x00,0xFF,0x03,...vlq(songName.length),...songName,          // 曲名
           0x00,0xFF,0x51,0x03,(us>>16)&255,(us>>8)&255,us&255,          // テンポ
           0x00,0xFF,0x58,0x04,4,2,24,8,                                  // 拍子 4/4
@@ -738,10 +741,10 @@ function exportMidi(tr){
   let t1=[0x00,0xFF,0x03,...vlq(trkName.length),...trkName,              // トラック名
           0x00,0xC0,0x00];                                               // 音色（ピアノ）
   let last=0; ev.forEach(e=>{ t1.push(...vlq(e[0]-last), e[1], e[2], e[3]); last=e[0]; });
-  const endTick=Math.max(last, S.bars*STEPS*tick);                       // 小節の終わりまで長さを持たせる
+  const endTick=Math.max(last, (sd.bars||4)*STEPS*tick);                       // 小節の終わりまで長さを持たせる
   t1.push(...vlq(endTick-last),0xFF,0x2F,0x00);
   const bytes=new Uint8Array([0x4D,0x54,0x68,0x64,0,0,0,6,0,1,0,2,TPQ>>8,TPQ&255, ...chunk(t0), ...chunk(t1)]);
-  const name=(tr.name||'melody').replace(/[\\/:*?"<>|]/g,'_')+'.mid';
+  const name=(sname+'_'+(tr.name||'melody')).replace(/[\\/:*?"<>|]/g,'_')+'.mid';
   closeSheet();
   if(window.claude){ toast('この置き場は .mid を出せん。自前の置き場に移したら動く'); return; }
   const file=new File([bytes],name,{type:'audio/midi'});
@@ -797,11 +800,14 @@ function renderLib(){
 }
 const esc = t => String(t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function songSheet(sg){
-  const sh=sheet(`<h3>${esc(sg.name)}</h3><div class="row">
+  const sd=normalize(JSON.parse(JSON.stringify(sg.data||{})));
+  const expBtns=sd.tracks.map((t,i)=>`<button class="pick" data-exp="${i}">MIDI書き出し<span class="sub">${esc(t.name||'melody')}${t.notes&&t.notes.length?'':'（音なし）'}</span></button>`).join('');
+  const sh=sheet(`<h3>${esc(sg.name)}</h3><div class="row">${expBtns}</div><div class="row">
     <button class="pick" id="sRen">名前を変える</button>
     <button class="pick" id="sDup">複製</button>
     <button class="pick danger" id="sDel">この曲を消す</button></div>
     <p class="txt">${esc(songSub(sg))}</p>`);
+  sh.querySelectorAll('[data-exp]').forEach(b=>b.addEventListener('click',()=>exportMidi(sd.tracks[+b.dataset.exp], sd, sg.name)));
   $('sRen').addEventListener('click',()=>{ const n=prompt('曲の名前', sg.name); if(n){ sg.name=n; saveLib(); renderLib(); } closeSheet(); });
   $('sDup').addEventListener('click',()=>{ const c={id:uid(), name:sg.name+' のコピー', savedAt:new Date().toISOString(), data:JSON.parse(JSON.stringify(sg.data))}; LIB.songs.push(c); saveLib(); renderLib(); closeSheet(); toast('複製した'); });
   let arm=0;
